@@ -68,21 +68,80 @@
     setTimeout(() => { b.textContent = "📋 Copiar chave Pix"; b.classList.remove("copied"); }, 3500);
   });
 
-  // ---------- Upload ----------
-  const file = form.comprovante;
-  file.addEventListener("change", () => {
-    const fl = file.files[0];
-    $("#upload-t").textContent = fl ? "✓ " + fl.name : "Toque para anexar a imagem ou o PDF do comprovante";
-    $("#upload").classList.toggle("has-file", !!fl);
+  // ---------- "Acorda" o servidor enquanto a pessoa preenche ----------
+  let warmed = false;
+  form.addEventListener("focusin", () => {
+    if (warmed || !C.APPS_SCRIPT_URL) return;
+    warmed = true;
+    fetch(C.APPS_SCRIPT_URL).catch(() => {});
   });
 
-  const readAsBase64 = (fl) =>
+  // ---------- Upload (comprime a imagem já na hora que anexa) ----------
+  const file = form.comprovante;
+  let prepared = null; // Promise<{nome, tipo, base64}>
+
+  const readAsBase64 = (blob) =>
     new Promise((res, rej) => {
       const r = new FileReader();
       r.onload = () => res(String(r.result).split(",")[1]);
       r.onerror = rej;
-      r.readAsDataURL(fl);
+      r.readAsDataURL(blob);
     });
+
+  async function compressImage(fl) {
+    const MAX = 1600;
+    const url = URL.createObjectURL(fl);
+    try {
+      const img = await new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i);
+        i.onerror = rej;
+        i.src = url;
+      });
+      const k = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * k);
+      c.height = Math.round(img.naturalHeight * k);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.8));
+      return blob && blob.size < fl.size ? blob : null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function prepareFile(fl) {
+    if (fl.type.startsWith("image/")) {
+      try {
+        const small = await compressImage(fl);
+        if (small) {
+          return { nome: fl.name.replace(/\.[^.]+$/, "") + ".jpg", tipo: "image/jpeg", base64: await readAsBase64(small), bytes: small.size };
+        }
+      } catch (e) { /* formato que o navegador não abre (ex. HEIC): envia o original */ }
+    }
+    return { nome: fl.name, tipo: fl.type, base64: await readAsBase64(fl), bytes: fl.size };
+  }
+
+  file.addEventListener("change", () => {
+    const fl = file.files[0];
+    $("#upload-t").textContent = fl ? "✓ " + fl.name : "Toque para anexar a imagem ou o PDF do comprovante";
+    $("#upload").classList.toggle("has-file", !!fl);
+    prepared = fl ? prepareFile(fl) : null;
+    if (prepared) prepared.catch(() => {});
+  });
+
+  // ---------- Tela "Enviando..." ----------
+  const sending = $("#sending");
+  const blockLeave = (e) => { e.preventDefault(); e.returnValue = ""; };
+  function setSending(on) {
+    sending.hidden = !on;
+    document.body.style.overflow = on ? "hidden" : "";
+    if (on) window.addEventListener("beforeunload", blockLeave);
+    else window.removeEventListener("beforeunload", blockLeave);
+  }
 
   // ---------- Envio ----------
   const err = $("#error");
@@ -98,7 +157,8 @@
     const fl = file.files[0];
     if (!fl) return "Anexe o comprovante do Pix.";
     if (!/^image\/|^application\/pdf$/.test(fl.type)) return "O comprovante precisa ser imagem (JPG/PNG) ou PDF.";
-    if (fl.size > MAX_MB * 1024 * 1024) return `O comprovante tem mais de ${MAX_MB} MB. Envie um arquivo menor.`;
+    const limite = fl.type.startsWith("image/") ? 20 : MAX_MB; // imagens são comprimidas antes do envio
+    if (fl.size > limite * 1024 * 1024) return `O comprovante tem mais de ${limite} MB. Envie um arquivo menor.`;
     if (!form.termo.checked) return "Marque a declaração de responsabilidade para continuar.";
     return "";
   }
@@ -114,9 +174,11 @@
     const btn = $("#submit");
     btn.disabled = true;
     btn.textContent = "Enviando…";
+    setSending(true);
 
     try {
-      const fl = file.files[0];
+      const arq = await (prepared || prepareFile(file.files[0]));
+      if (arq.bytes > MAX_MB * 1024 * 1024) throw new Error("grande");
       const plano = C.PLANOS[form.modelo.value];
       const body = {
         nome: form.nome.value.trim(),
@@ -125,7 +187,7 @@
         modalidade: form.modalidade.value,
         modelo: plano.nome,
         valor: plano.valor,
-        arquivo: { nome: fl.name, tipo: fl.type, base64: await readAsBase64(fl) },
+        arquivo: { nome: arq.nome, tipo: arq.tipo, base64: arq.base64 },
       };
       // text/plain evita o preflight de CORS do Apps Script
       const r = await fetch(C.APPS_SCRIPT_URL, {
@@ -136,6 +198,7 @@
       const data = await r.json();
       if (!data.ok) throw new Error(data.erro || "Erro ao salvar");
 
+      setSending(false);
       form.hidden = true;
       $("#success-n").textContent = "#" + data.numero;
       const g = $("#success-wa");
@@ -145,6 +208,12 @@
       $("#inscricao").scrollIntoView({ behavior: "smooth" });
     } catch (ex) {
       console.error(ex);
+      setSending(false);
+      if (ex.message === "grande") {
+        btn.disabled = false;
+        btn.textContent = "Enviar inscrição";
+        return showErr(`O comprovante tem mais de ${MAX_MB} MB. Envie um print ou um arquivo menor.`);
+      }
       showErr("Não foi possível enviar agora. Verifique sua internet e tente de novo. Se persistir, fale com a organização.");
       btn.disabled = false;
       btn.textContent = "Enviar inscrição";
