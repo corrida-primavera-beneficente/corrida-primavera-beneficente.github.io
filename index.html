@@ -182,16 +182,21 @@
           <!-- 4 -->
           <fieldset class="step">
             <legend><span class="n">4</span> Pagamento via Pix</legend>
-            <div id="pix-empty" class="pix-empty">Escolha o modelo de inscrição para ver o valor e o QR Code.</div>
+            <div id="pix-empty" class="pix-empty">Escolha o modelo de inscrição para ver o valor e a chave Pix.</div>
             <div id="pix" class="pix" hidden>
-              <div class="pix-qr" id="pix-qr" aria-label="QR Code Pix"></div>
-              <div class="pix-info">
-                <p class="pix-val">Valor: <strong id="pix-valor">R$ 0,00</strong></p>
-                <p class="pix-to">Para: <strong id="pix-nome"></strong></p>
-                <p class="pix-key">Chave Pix: <code id="pix-chave"></code></p>
-                <button type="button" class="btn btn-blue btn-sm" id="pix-copy">Copiar Pix Copia e Cola</button>
-                <p class="pix-hint">Abra o app do seu banco, escaneie o QR Code ou cole o código. Depois salve o comprovante.</p>
+              <p class="pix-val">Valor a pagar<strong id="pix-valor">R$ 0,00</strong></p>
+              <div class="pix-keybox">
+                <span class="pix-lbl">Chave Pix (aleatória)</span>
+                <code id="pix-chave"></code>
               </div>
+              <button type="button" class="btn btn-orange btn-block" id="pix-copy">📋 Copiar chave Pix</button>
+              <p class="pix-to">Titular: <strong id="pix-nome"></strong></p>
+              <ol class="pix-steps">
+                <li>Toque em <strong>Copiar chave Pix</strong></li>
+                <li>No app do seu banco: <strong>Pix → Pagar com chave</strong> e cole a chave</li>
+                <li>Digite o valor <strong id="pix-valor2">R$ 0,00</strong> e confirme</li>
+                <li>Salve o comprovante e anexe abaixo 👇</li>
+              </ol>
             </div>
           </fieldset>
 
@@ -246,7 +251,6 @@
     </div>
   </footer>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

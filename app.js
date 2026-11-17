@@ -39,62 +39,33 @@
     wa.value = d;
   });
 
-  // ---------- Pix (BR Code "copia e cola") ----------
-  const strip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
-  const f = (id, v) => id + String(v.length).padStart(2, "0") + v;
-  function crc16(s) {
-    let crc = 0xffff;
-    for (let i = 0; i < s.length; i++) {
-      crc ^= s.charCodeAt(i) << 8;
-      for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
-    }
-    return crc.toString(16).toUpperCase().padStart(4, "0");
-  }
-  function pixPayload(valor) {
-    const p =
-      f("00", "01") +
-      f("26", f("00", "br.gov.bcb.pix") + f("01", C.PIX_CHAVE.trim())) +
-      f("52", "0000") +
-      f("53", "986") +
-      f("54", valor.toFixed(2)) +
-      f("58", "BR") +
-      f("59", strip(C.PIX_NOME).slice(0, 25)) +
-      f("60", strip(C.PIX_CIDADE).slice(0, 15)) +
-      f("62", f("05", "PRIMAVERA2026")) +
-      "6304";
-    return p + crc16(p);
-  }
-
-  let pixCode = "";
+  // ---------- Pix (chave para copiar) ----------
   function updatePix() {
     const m = form.modelo.value;
     if (!m) return;
-    const plano = C.PLANOS[m];
+    const valor = brl(C.PLANOS[m].valor);
     $("#pix-empty").hidden = true;
     $("#pix").hidden = false;
-    $("#pix-valor").textContent = brl(plano.valor);
-    $("#pix-nome").textContent = C.PIX_NOME || "(configurar)";
-    $("#pix-chave").textContent = C.PIX_CHAVE || "(configurar)";
-    const qr = $("#pix-qr");
-    qr.innerHTML = "";
-    if (!C.PIX_CHAVE) { qr.textContent = "Configure a chave Pix"; return; }
-    pixCode = pixPayload(plano.valor);
-    new QRCode(qr, { text: pixCode, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+    $("#pix-valor").textContent = valor;
+    $("#pix-valor2").textContent = valor;
+    $("#pix-nome").textContent = C.PIX_NOME;
+    $("#pix-chave").textContent = C.PIX_CHAVE;
   }
   form.querySelectorAll("input[name=modelo]").forEach((r) => r.addEventListener("change", updatePix));
 
   $("#pix-copy").addEventListener("click", async (e) => {
     const b = e.currentTarget;
     try {
-      await navigator.clipboard.writeText(pixCode);
+      await navigator.clipboard.writeText(C.PIX_CHAVE);
     } catch {
       const t = document.createElement("textarea");
-      t.value = pixCode; document.body.appendChild(t); t.select();
+      t.value = C.PIX_CHAVE; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0";
+      document.body.appendChild(t); t.select(); t.setSelectionRange(0, 999);
       document.execCommand("copy"); t.remove();
     }
-    const old = b.textContent;
-    b.textContent = "Copiado! ✓";
-    setTimeout(() => (b.textContent = old), 2000);
+    b.textContent = "✓ Chave copiada! Agora cole no app do banco";
+    b.classList.add("copied");
+    setTimeout(() => { b.textContent = "📋 Copiar chave Pix"; b.classList.remove("copied"); }, 3500);
   });
 
   // ---------- Upload ----------
